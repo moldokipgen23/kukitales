@@ -14,6 +14,13 @@ class SampleContentSeeder extends Seeder
 {
     public function run(): void
     {
+        // Idempotency guard — skip if sample content has already been seeded.
+        // Lets us safely re-run db:seed on every deploy without duplicating posts.
+        if (Post::where('title', 'The Last Songkeeper of Sadar Hills')->exists()) {
+            $this->command?->info('Sample content already seeded — skipping.');
+            return;
+        }
+
         $admin  = User::where('email', 'admin@kukitales.com')->first();
         $editor = User::where('email', 'editor@kukitales.com')->first();
         $author = User::where('email', 'author@kukitales.com')->first();

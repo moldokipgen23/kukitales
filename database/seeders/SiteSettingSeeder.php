@@ -60,8 +60,13 @@ class SiteSettingSeeder extends Seeder
             'donation_paypal_link' => null,
         ];
 
+        // Only seed keys that don't exist yet.
+        // Preserves admin-edited values when this seeder is re-run after deploys.
+        $existing = SiteSetting::pluck('key')->all();
         foreach ($settings as $key => $value) {
-            SiteSetting::set($key, $value);
+            if (! in_array($key, $existing, true)) {
+                SiteSetting::set($key, $value);
+            }
         }
     }
 }
