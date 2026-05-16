@@ -1,1 +1,1 @@
-web: php artisan migrate --force && php artisan db:seed --force && php artisan config:cache && php artisan route:cache && php artisan view:cache && (php artisan storage:link || true) && php -S 0.0.0.0:$PORT -t public public/index.php
+web: php artisan optimize:clear && php artisan migrate --force && php artisan db:seed --force && php artisan filament:assets && (php artisan storage:link || true) && php artisan config:cache && php artisan route:cache && php artisan view:cache && php -S 0.0.0.0:$PORT -t public public/index.php
