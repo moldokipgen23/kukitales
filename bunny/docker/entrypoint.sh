@@ -26,19 +26,39 @@ if [ -n "$DB_HOST" ]; then
     done
 fi
 
-# Auto-generate APP_KEY if missing
-if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "" ]; then
-    GENERATED_KEY="base64:$(openssl rand -base64 32)"
-    export APP_KEY="$GENERATED_KEY"
-    echo "==> Generated APP_KEY (set as env var)"
+# APP_KEY: must be stable across all pods (load balancer routes between them).
+# Strategy: shared key persisted in the DB via a tiny `app_meta` table.
+# First pod to boot generates + stores it; later pods read it back.
+if [ -z "$APP_KEY" ]; then
+    echo "==> APP_KEY not set — bootstrapping from shared DB store"
+    mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" <<'SQL' >/dev/null 2>&1
+CREATE TABLE IF NOT EXISTS app_meta (
+  k VARCHAR(64) PRIMARY KEY,
+  v TEXT NOT NULL
+);
+SQL
+    STORED_KEY=$(mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" -N -B -e "SELECT v FROM app_meta WHERE k='app_key' LIMIT 1" 2>/dev/null)
+    if [ -z "$STORED_KEY" ]; then
+        STORED_KEY="base64:$(openssl rand -base64 32)"
+        ESC_KEY=$(printf '%s' "$STORED_KEY" | sed "s/'/''/g")
+        mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" -e "INSERT INTO app_meta (k,v) VALUES ('app_key','$ESC_KEY') ON DUPLICATE KEY UPDATE v=v"
+        STORED_KEY=$(mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" -N -B -e "SELECT v FROM app_meta WHERE k='app_key' LIMIT 1")
+        echo "    Generated and stored new APP_KEY in DB"
+    else
+        echo "    Loaded existing APP_KEY from DB"
+    fi
+    export APP_KEY="$STORED_KEY"
 fi
 
-# Clear any stale caches
-php artisan optimize:clear || true
-
-# Migrations + base seeds (idempotent)
+# Migrations (creates cache/sessions tables before any cache ops)
 echo "==> Running migrations"
 php artisan migrate --force
+
+# Now safe to clear caches (tables exist)
+php artisan config:clear || true
+php artisan route:clear  || true
+php artisan view:clear   || true
+php artisan cache:clear  || true
 
 echo "==> Seeding base data (idempotent — skips if already done)"
 php artisan db:seed --class="Database\Seeders\AdminUserSeeder"   --force || true
