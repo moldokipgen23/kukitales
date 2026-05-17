@@ -38,7 +38,17 @@
       "Bash(git remote *)",
       "Bash(git push *)",
       "Bash(curl -s -o /dev/null -w \"Repo URL: %{http_code}\\\\n\" https://github.com/moldokipgen23/kukitales)",
-      "Bash(composer update *)"
+      "Bash(composer update *)",
+      "Bash(chmod +x start.sh)",
+      "Bash(curl -s -I \"https://kukitales-production.up.railway.app/css/filament/filament/app.css\")",
+      "Bash(curl -s -I \"https://kukitales-production.up.railway.app/js/filament/filament/app.js\")",
+      "Bash(curl -s -I \"https://kukitales-production.up.railway.app/favicon.ico\")",
+      "Bash(curl -s -I \"https://kukitales-production.up.railway.app/robots.txt\")",
+      "Bash(curl -s https://kukitales-production.up.railway.app/admin/login -o /tmp/login.html)",
+      "Read(//private/tmp/**)",
+      "Bash(grep -oE '<style[^>]*>[^<]{1,200}' /tmp/login.html)",
+      "Bash(chmod +x build-release.sh)",
+      "Bash(./build-release.sh 1.0.0)"
     ]
   }
 }

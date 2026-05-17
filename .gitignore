@@ -23,3 +23,5 @@ yarn-error.log
 /.zed
 /database/database.sqlite
 /storage/app/public/*
+/storage/installed.lock
+/releases
