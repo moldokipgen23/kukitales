@@ -6,6 +6,20 @@ set -e
 
 cd /var/www/html
 
+# Ensure runtime-writable dirs exist and are owned by web user.
+# Container restarts can lose runtime-created dirs; guarantee them here.
+mkdir -p \
+    storage/app/public \
+    storage/app/livewire-tmp \
+    storage/framework/cache/data \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/framework/testing \
+    storage/logs \
+    bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache public
+chmod -R ug+rwX storage bootstrap/cache
+
 echo "════════════════════════════════════════════"
 echo " KukiTales Bunny container booting"
 echo "════════════════════════════════════════════"
@@ -69,7 +83,8 @@ php artisan db:seed --class="Database\Seeders\SiteSettingSeeder" --force || true
 echo "==> Publishing Filament assets"
 php artisan filament:assets || true
 
-# Storage symlink
+# Storage symlink (force recreate — handles container rebuilds cleanly)
+rm -f public/storage
 php artisan storage:link || true
 
 # Cache configs with RUNTIME env values
