@@ -43,23 +43,28 @@ fi
 # APP_KEY: must be stable across all pods (load balancer routes between them).
 # Strategy: shared key persisted in the DB via a tiny `app_meta` table.
 # First pod to boot generates + stores it; later pods read it back.
+# All mariadb calls are wrapped to never abort the script (set -e safe).
 if [ -z "$APP_KEY" ]; then
     echo "==> APP_KEY not set — bootstrapping from shared DB store"
-    mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" <<'SQL' >/dev/null 2>&1
-CREATE TABLE IF NOT EXISTS app_meta (
-  k VARCHAR(64) PRIMARY KEY,
-  v TEXT NOT NULL
-);
-SQL
-    STORED_KEY=$(mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" -N -B -e "SELECT v FROM app_meta WHERE k='app_key' LIMIT 1" 2>/dev/null)
+    MYSQL="mariadb -h $DB_HOST -P ${DB_PORT:-3306} -u $DB_USERNAME -p$DB_PASSWORD $DB_DATABASE"
+
+    set +e
+    $MYSQL -e "CREATE TABLE IF NOT EXISTS app_meta (k VARCHAR(64) PRIMARY KEY, v TEXT NOT NULL)" 2>&1 | sed 's/^/    [db] /'
+    STORED_KEY=$($MYSQL -N -B -e "SELECT v FROM app_meta WHERE k='app_key' LIMIT 1" 2>/dev/null)
     if [ -z "$STORED_KEY" ]; then
         STORED_KEY="base64:$(openssl rand -base64 32)"
         ESC_KEY=$(printf '%s' "$STORED_KEY" | sed "s/'/''/g")
-        mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" -e "INSERT INTO app_meta (k,v) VALUES ('app_key','$ESC_KEY') ON DUPLICATE KEY UPDATE v=v"
-        STORED_KEY=$(mariadb -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" -N -B -e "SELECT v FROM app_meta WHERE k='app_key' LIMIT 1")
+        $MYSQL -e "INSERT INTO app_meta (k,v) VALUES ('app_key','$ESC_KEY') ON DUPLICATE KEY UPDATE v=v" 2>&1 | sed 's/^/    [db] /'
+        STORED_KEY=$($MYSQL -N -B -e "SELECT v FROM app_meta WHERE k='app_key' LIMIT 1" 2>/dev/null)
         echo "    Generated and stored new APP_KEY in DB"
     else
         echo "    Loaded existing APP_KEY from DB"
+    fi
+    set -e
+
+    if [ -z "$STORED_KEY" ]; then
+        echo "    !! DB bootstrap failed, falling back to ephemeral key (sessions won't survive restarts)"
+        STORED_KEY="base64:$(openssl rand -base64 32)"
     fi
     export APP_KEY="$STORED_KEY"
 fi
